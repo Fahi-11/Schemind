@@ -51,7 +51,7 @@ interface YouTubeVideo {
 }
 
 // NEW: Gemini API Key (get from aistudio.google.com/app/apikey)
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "YOUR_GEMINI_API_KEY_HERE";
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "AIzaSyCKxdf9EHiQFWLx9APKr_ob4L-i5krD8gg";
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // NEW: Gemini roadmap generation

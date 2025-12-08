@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Youtube} from 'lucide-react';
+import { Youtube } from 'lucide-react';
 import ReactFlow, {
   useNodesState,
   useEdgesState,
@@ -11,6 +11,7 @@ import 'reactflow/dist/style.css';
 import { resourceStore } from './Resources';
 import { toPng, toJpeg, toBlob, toPixelData, toSvg } from 'html-to-image';
 import { jsPDF } from 'jspdf';
+import { GoogleGenerativeAI } from "@google/generative-ai"; // NEW: Gemini SDK
 
 interface RoadmapProps {}
 
@@ -49,9 +50,14 @@ interface YouTubeVideo {
   };
 }
 
-const COHERE_API_KEY = import.meta.env.VITE_COHERE_API_KEY;
+// NEW: Gemini API Key (get from aistudio.google.com/app/apikey)
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "YOUR_GEMINI_API_KEY_HERE";
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
+// NEW: Gemini roadmap generation
 async function fetchRoadmap(topic: string, time: number, unit: string): Promise<string> {
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  
   const prompt = `
 Create a beginner-friendly learning roadmap for the topic: "${topic}" within a time span of ${time} ${unit}.
 
@@ -70,25 +76,14 @@ Rules:
 Do not add bullets, dashes, indentation or explanation text.
 `;
 
-  const res = await fetch('https://api.cohere.ai/v1/generate', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${COHERE_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'command-r-plus',
-      prompt,
-      max_tokens: 300,
-      temperature: 0.6,
-    }),
-  });
-
-  const data = await res.json();
-  return data.generations[0].text;
+  const result = await model.generateContent(prompt);
+  return result.response.text();
 }
 
+// NEW: Gemini subtree generation
 async function fetchSubtree(nodeLabel: string, topic: string, mainRoadmapText: string): Promise<string> {
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  
   const prompt = `
 Create a detailed learning roadmap for the concept: "${nodeLabel}" in the context of the topic: "${topic}".
 
@@ -112,25 +107,14 @@ Rules:
 Do not add bullets, dashes, indentation or explanation text.
 `;
 
-  const res = await fetch('https://api.cohere.ai/v1/generate', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${COHERE_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'command-r-plus',
-      prompt,
-      max_tokens: 400,
-      temperature: 0.6,
-    }),
-  });
-
-  const data = await res.json();
-  return data.generations[0].text;
+  const result = await model.generateContent(prompt);
+  return result.response.text();
 }
 
+// NEW: Gemini node details
 async function fetchNodeDetails(nodeLabel: string, topic: string, context: string): Promise<string> {
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  
   const prompt = `
 Provide a detailed explanation about "${nodeLabel}" in the context of learning "${topic}".
 
@@ -145,22 +129,8 @@ make it all very short like 15 to 20 words
 Keep it educational and beginner-friendly and use the html structure for the format like make all under a <p> tag, dont use markdown language like *s, #s , just use <b> and tags for these stuffs
 `;
 
-  const res = await fetch('https://api.cohere.ai/v1/generate', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${COHERE_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'command-r-plus',
-      prompt,
-      max_tokens: 500,
-      temperature: 0.7,
-    }),
-  });
-
-  const data = await res.json();
-  return data.generations[0].text;
+  const result = await model.generateContent(prompt);
+  return result.response.text();
 }
 
 function cleanRoadmapText(text: string): string {
@@ -519,8 +489,8 @@ const SidePanel: React.FC<SidePanelProps> = ({ selectedNode, onClose, onGenerate
       {/* Add the spin animation */}
       <style>{`
         @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
+         0% { transform: rotate(0deg); }
+         100% { transform: rotate(360deg); }
         }
       `}</style>
     </div>
@@ -721,6 +691,7 @@ const Roadmap: React.FC<RoadmapProps> = () => {
     setNestedSelectedNode(null);
     setNestedNodeDetails('');
   };
+
   const downloadPng = async () => {
     const flowElement = document.querySelector('.react-flow');
     if (!flowElement) return;

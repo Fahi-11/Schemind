@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import * as GoogleAI from "@google/generative-ai";
+
+const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || "";
 
 const Chatbot: React.FC = () => {
   const [messages, setMessages] = useState<string[]>([]);
@@ -7,17 +8,26 @@ const Chatbot: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const fetchResponse = async (message: string) => {
-    const apiKey = 'AIzaSyDeC13eXS3igAB5MQZGWArKlQdgz6WROps';
-
-    const genAI = new GoogleAI.GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-
     try {
       setLoading(true);
 
-      const result = await model.generateContent(message);
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "mistralai/devstral-2512:free",
+          messages: [
+            { role: "user", content: message }
+          ],
+        }),
+      });
+
+      const result = await response.json();
       const responseText =
-        result.response.text().trim() || "Sorry, I couldn't understand.";
+        result.choices?.[0]?.message?.content?.trim() || "Sorry, I couldn't understand.";
 
       setMessages((prev) => [
         ...prev,

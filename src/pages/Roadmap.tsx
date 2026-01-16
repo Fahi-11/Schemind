@@ -11,7 +11,6 @@ import 'reactflow/dist/style.css';
 import { resourceStore } from './Resources';
 import { toPng, toJpeg, toBlob, toPixelData, toSvg } from 'html-to-image';
 import { jsPDF } from 'jspdf';
-import { GoogleGenerativeAI } from "@google/generative-ai"; // NEW: Gemini SDK
 
 interface RoadmapProps {}
 
@@ -50,14 +49,30 @@ interface YouTubeVideo {
   };
 }
 
-// NEW: Gemini API Key (get from aistudio.google.com/app/apikey)
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "YOUR_GEMINI_API_KEY_HERE";
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || "";
 
-// NEW: Gemini roadmap generation
+// Helper function to call OpenRouter API
+async function callOpenRouter(prompt: string): Promise<string> {
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "mistralai/devstral-2512:free",
+      messages: [
+        { role: "user", content: prompt }
+      ],
+    }),
+  });
+
+  const result = await response.json();
+  return result.choices?.[0]?.message?.content?.trim() || "";
+}
+
+// OpenRouter roadmap generation
 async function fetchRoadmap(topic: string, time: number, unit: string): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-  
   const prompt = `
 Create a beginner-friendly learning roadmap for the topic: "${topic}" within a time span of ${time} ${unit}.
 
@@ -76,14 +91,11 @@ Rules:
 Do not add bullets, dashes, indentation or explanation text.
 `;
 
-  const result = await model.generateContent(prompt);
-  return result.response.text();
+  return await callOpenRouter(prompt);
 }
 
-// NEW: Gemini subtree generation
+// OpenRouter subtree generation
 async function fetchSubtree(nodeLabel: string, topic: string, mainRoadmapText: string): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-  
   const prompt = `
 Create a detailed learning roadmap for the concept: "${nodeLabel}" in the context of the topic: "${topic}".
 
@@ -107,21 +119,18 @@ Rules:
 Do not add bullets, dashes, indentation or explanation text.
 `;
 
-  const result = await model.generateContent(prompt);
-  return result.response.text();
+  return await callOpenRouter(prompt);
 }
 
-// NEW: Gemini node details
+// OpenRouter node details
 async function fetchNodeDetails(nodeLabel: string, topic: string, context: string): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-  
   const prompt = `
 Provide a detailed explanation about "${nodeLabel}" in the context of learning "${topic}".
 
 Include:
 - What it is
 - Why it's important
-- Key concepts to understand 
+- Key concepts to understand
 - Learning tips
 
 make it all very short like 15 to 20 words
@@ -129,8 +138,7 @@ make it all very short like 15 to 20 words
 Keep it educational and beginner-friendly and use the html structure for the format like make all under a <p> tag, dont use markdown language like *s, #s , just use <b> and tags for these stuffs
 `;
 
-  const result = await model.generateContent(prompt);
-  return result.response.text();
+  return await callOpenRouter(prompt);
 }
 
 function cleanRoadmapText(text: string): string {
@@ -285,8 +293,8 @@ const SidePanel: React.FC<SidePanelProps> = ({ selectedNode, onClose, onGenerate
           fontWeight: 600,
           color: 'white'
         }}>{selectedNode.data.label}</h3>
-        <button 
-          onClick={onClose} 
+        <button
+          onClick={onClose}
           style={{
             background: 'none',
             border: 'none',
@@ -302,7 +310,7 @@ const SidePanel: React.FC<SidePanelProps> = ({ selectedNode, onClose, onGenerate
           ×
         </button>
       </div>
-      
+
       <div style={{
         flex: 1,
         padding: '1rem',
@@ -400,8 +408,8 @@ const SidePanel: React.FC<SidePanelProps> = ({ selectedNode, onClose, onGenerate
               margin: 0
             }}>
               {videos.map(video => (
-                <li 
-                  key={video.id.videoId} 
+                <li
+                  key={video.id.videoId}
                   style={{
                     backgroundColor: '#2d2d3d',
                     borderRadius: '0.5rem',
@@ -507,7 +515,7 @@ const SubtreeModal: React.FC<SubtreeModalProps> = ({ isOpen, onClose, subtreeDat
           <h3>Detailed Roadmap: {subtreeData?.title}</h3>
           <button onClick={onClose} className="close-btn">×</button>
         </div>
-        
+
         <div className="modal-body">
           {loading ? (
             <div className="loading-modal">
@@ -569,7 +577,7 @@ const Roadmap: React.FC<RoadmapProps> = () => {
     context?: string;
   } | null>(null);
   const [loadingSubtree, setLoadingSubtree] = useState<boolean>(false);
-  
+
   // Nested subtree state
   const [showNestedSubtreeModal, setShowNestedSubtreeModal] = useState<boolean>(false);
   const [nestedSubtreeData, setNestedSubtreeData] = useState<{
@@ -598,28 +606,28 @@ const Roadmap: React.FC<RoadmapProps> = () => {
   const onNodeClick = useCallback<NodeMouseHandler>(async (_, node) => {
     setSelectedNode(node);
     setLoadingDetails(true);
-    
+
     try {
       const details = await fetchNodeDetails(node.data.label, topic, mainRoadmapText);
       setNodeDetails(details);
     } catch (error) {
       setNodeDetails('Failed to load details for this topic.');
     }
-    
+
     setLoadingDetails(false);
   }, [mainRoadmapText, topic]);
 
   const handleGenerateSubtree = async () => {
     if (!selectedNode) return;
-    
+
     setLoadingSubtree(true);
     setShowSubtreeModal(true);
-    
+
     try {
       const subtreeText = await fetchSubtree(selectedNode.data.label, topic, mainRoadmapText);
       const cleaned = cleanRoadmapText(subtreeText);
       const { nodes: subNodes, edges: subEdges } = parseTreeToFlow(cleaned, null, 50, 50, 180, 'subtree');
-      
+
       setSubtreeData({
         title: selectedNode.data.label,
         nodes: subNodes,
@@ -629,35 +637,35 @@ const Roadmap: React.FC<RoadmapProps> = () => {
     } catch (error) {
       console.error('Error generating subtree:', error);
     }
-    
+
     setLoadingSubtree(false);
   };
 
   const handleNestedSubtreeNodeClick = useCallback<NodeMouseHandler>(async (_, node) => {
     setNestedSelectedNode(node);
     setLoadingNestedDetails(true);
-    
+
     try {
       const details = await fetchNodeDetails(node.data.label, topic, subtreeData?.context || mainRoadmapText);
       setNestedNodeDetails(details);
     } catch (error) {
       setNestedNodeDetails('Failed to load details for this topic.');
     }
-    
+
     setLoadingNestedDetails(false);
   }, [subtreeData, mainRoadmapText, topic]);
 
   const handleGenerateNestedSubtree = async () => {
     if (!nestedSelectedNode) return;
-    
+
     setLoadingNestedSubtree(true);
     setShowNestedSubtreeModal(true);
-    
+
     try {
       const subtreeText = await fetchSubtree(nestedSelectedNode.data.label, topic, subtreeData?.context || mainRoadmapText);
       const cleaned = cleanRoadmapText(subtreeText);
       const { nodes: subNodes, edges: subEdges } = parseTreeToFlow(cleaned, null, 50, 50, 180, 'nested-subtree');
-      
+
       setNestedSubtreeData({
         title: nestedSelectedNode.data.label,
         nodes: subNodes,
@@ -666,7 +674,7 @@ const Roadmap: React.FC<RoadmapProps> = () => {
     } catch (error) {
       console.error('Error generating nested subtree:', error);
     }
-    
+
     setLoadingNestedSubtree(false);
   };
 
@@ -717,7 +725,7 @@ const Roadmap: React.FC<RoadmapProps> = () => {
       const imgProps = pdf.getImageProperties(dataUrl);
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
+
       pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`${topic}-roadmap.pdf`);
     } catch (error) {
@@ -732,23 +740,23 @@ const Roadmap: React.FC<RoadmapProps> = () => {
       </div>
 
       <div className="flex justify-center gap-4 mb-8 flex-wrap">
-        <input 
-          type="text" 
-          value={topic} 
-          onChange={(e) => setTopic(e.target.value)} 
-          placeholder="Enter topic" 
+        <input
+          type="text"
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          placeholder="Enter topic"
           className="p-2 rounded bg-gray-800 text-white outline-none min-w-[200px]"
         />
-        <input 
-          type="number" 
-          value={time} 
-          onChange={(e) => setTime(Number(e.target.value))} 
-          placeholder="Time" 
+        <input
+          type="number"
+          value={time}
+          onChange={(e) => setTime(Number(e.target.value))}
+          placeholder="Time"
           className="p-2 rounded bg-gray-800 text-white outline-none w-20"
         />
-        <select 
-          value={unit} 
-          onChange={(e) => setUnit(e.target.value)} 
+        <select
+          value={unit}
+          onChange={(e) => setUnit(e.target.value)}
           className="p-2 rounded bg-gray-800 text-white outline-none"
         >
           <option value="hours">hours</option>
@@ -756,8 +764,8 @@ const Roadmap: React.FC<RoadmapProps> = () => {
           <option value="weeks">weeks</option>
           <option value="months">months</option>
         </select>
-        <button 
-          onClick={loadRoadmap} 
+        <button
+          onClick={loadRoadmap}
           className="p-2 bg-blue-600 rounded min-w-[100px] hover:bg-blue-700 transition-colors"
           disabled={loading}
         >
@@ -765,13 +773,13 @@ const Roadmap: React.FC<RoadmapProps> = () => {
         </button>
         {nodes.length > 0 && (
           <>
-            <button 
+            <button
               onClick={downloadPng}
               className="p-2 bg-green-600 rounded min-w-[100px] hover:bg-green-700 transition-colors"
             >
               Download PNG
             </button>
-            <button 
+            <button
               onClick={downloadPdf}
               className="p-2 bg-red-600 rounded min-w-[100px] hover:bg-red-700 transition-colors"
             >
@@ -792,7 +800,7 @@ const Roadmap: React.FC<RoadmapProps> = () => {
             fitView
           />
         </div>
-        
+
         <SidePanel
           selectedNode={selectedNode}
           onClose={closeSidePanel}

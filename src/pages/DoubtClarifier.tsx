@@ -8,6 +8,8 @@ interface Message {
   timestamp: Date;
 }
 
+const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || '';
+
 const DoubtClarifier = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -33,31 +35,37 @@ const DoubtClarifier = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('https://api.cohere.ai/v1/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer 3W85slWByAIgHZnnkaFDRfMgUbGEpDp6XAbJqMkb'
-        },
-        body: JSON.stringify({
-          model: 'command',
-          prompt: `You are a technical doubt clarifier focused on providing detailed, accurate explanations. Your role is to:
+      const conversationHistory = messages.map(msg => ({
+        role: msg.isUser ? 'user' : 'assistant',
+        content: msg.text
+      }));
+
+      const systemPrompt = `You are a technical doubt clarifier focused on providing detailed, accurate explanations. Your role is to:
 1. Break down complex concepts into simple terms
 2. Provide step-by-step solutions to problems
 3. Use relevant examples and analogies
 4. Include technical details when appropriate
-5. Suggest additional resources for deeper understanding
+5. Suggest additional resources for deeper understanding`;
 
-Here's the conversation context:\n\n${messages.map(msg => 
-  `${msg.isUser ? 'User' : 'Assistant'}: ${msg.text}`
-).join('\n')}\n\nUser: ${inputMessage}\n\nProvide a detailed, educational response:`,
-          max_tokens: 500,
-          temperature: 0.7,
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'mistralai/devstral-2512:free',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...conversationHistory,
+            { role: 'user', content: inputMessage }
+          ],
         })
       });
 
       const data = await response.json();
-      const botResponse = data.generations[0].text.trim();
+      const botResponse = data.choices?.[0]?.message?.content?.trim() ||
+        "I apologize, but I'm having trouble processing your request. Please try again.";
 
       setMessages(prev => [...prev, {
         text: botResponse,
@@ -139,4 +147,4 @@ Here's the conversation context:\n\n${messages.map(msg =>
   );
 };
 
-export default DoubtClarifier; 
+export default DoubtClarifier;

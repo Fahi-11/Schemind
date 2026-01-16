@@ -17,8 +17,7 @@ type Conversation = {
   topic?: string;
 };
 
-// WARNING: NEVER expose secret keys in production!
-const COHERE_API_KEY = 'gxhSGDmTyUrlspLk8RCRJ6RfUXksbNDPdqeZK4s9';
+const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || '';
 
 const ChatBot: React.FC = () => {
   const { isChatOpen, closeChat } = useChat();
@@ -131,41 +130,33 @@ What's on your mind today?`,
     setIsLoading(true);
 
     try {
-      // Build prompt from last 5 messages
-      const recent = updated.messages
-        .slice(-5)
-        .map((m) => `${m.isUser ? 'User' : 'Youniq'}: ${m.text}`)
-        .join('\n');
+      // Build conversation history for OpenRouter
+      const conversationHistory = updated.messages.map((m) => ({
+        role: m.isUser ? 'user' : 'assistant',
+        content: m.text,
+      }));
 
-      const prompt = `You are Youniq, a motivational coach helping students succeed.
-Your responses should be warm, empathetic, and solution-oriented.
+      const systemPrompt = `You are Youniq, a motivational coach helping students succeed.
+Your responses should be warm, empathetic, and solution-oriented.`;
 
-Conversation:
-${recent}
-
-Youniq:`;
-
-      // Make HTTPS request directly to Cohere API
-      const response = await fetch('https://api.cohere.ai/generate', {
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${COHERE_API_KEY}`,
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'command-xlarge-nightly',
-          prompt,
-          max_tokens: 250,
-          temperature: 0.7,
-          k: 0,
-          p: 1,
-          stop_sequences: ['User:', 'Youniq:'],
+          model: 'mistralai/devstral-2512:free',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...conversationHistory.slice(-10), // Last 10 messages for context
+          ],
         }),
       });
 
       const result = await response.json();
       const botText =
-        result.generations?.[0]?.text?.trim() ||
+        result.choices?.[0]?.message?.content?.trim() ||
         "I'm having trouble responding. Try again soon.";
 
       const finalConv: Conversation = {
@@ -188,7 +179,7 @@ Youniq:`;
       setCurrentConversation(finalConv);
       setConversations((prev) => prev.map((c) => (c.id === finalConv.id ? finalConv : c)));
     } catch (err) {
-      console.error('Cohere Error:', err);
+      console.error('OpenRouter Error:', err);
 
       const errConv: Conversation = {
         ...currentConversation,

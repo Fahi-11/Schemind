@@ -72,7 +72,7 @@ pipeline {
                     
                     // Verify Terraform directory exists and has files from Git checkout
                     bat '''
-                    if not exist terraform\\\\main.tf (
+                    if not exist terraform\\main.tf (
                         echo ERROR: Terraform files not found in workspace!
                         echo Checking current directory contents:
                         dir /b

@@ -187,7 +187,7 @@ pipeline {
                         
                         // Wait for application to be ready
                         echo "⏳ Waiting for application to start (60 seconds)..."
-                        bat "timeout /t 60 /nobreak >nul"
+                        bat "ping -n 60 127.0.0.1 >nul"
                         
                         // Health check
                         try {

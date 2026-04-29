@@ -1,6 +1,6 @@
 pipeline {
     agent any
-    
+
     environment {
         DOCKER_IMAGE = 'faheem313/schemind'
         DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
@@ -9,8 +9,9 @@ pipeline {
         EC2_INSTANCE_TYPE = 't3.small'
         TERRAFORM_DIR = 'terraform'
     }
-    
+
     stages {
+
         stage('Checkout Code') {
             steps {
                 script {
@@ -21,34 +22,41 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Build and Push Docker Image') {
             steps {
                 script {
                     echo "🐳 Building Docker image..."
 
-                    // Optimize image size
-                    echo "📏 Optimizing Docker image size..."
-                    bat "docker images ${DOCKER_IMAGE}:${BUILD_NUMBER}"
-                    
-                    // Push to Docker Hub
+                    // ✅ BUILD IMAGE (important)
+                    bat "docker build -f Dockerfile.optimized -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+
+                    echo "📏 Checking Docker images..."
+                    bat "docker images"
+
                     echo "📤 Pushing to Docker Hub..."
-                    withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: DOCKER_CREDENTIALS_ID,
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
+                        )
+                    ]) {
                         bat "echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin"
                         bat "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
                     }
 
-                    echo "🧹 Cleaning up intermediate images..."
+                    echo "🧹 Cleaning images..."
                     bat "docker image prune -f"
                 }
             }
         }
-        
+
         stage('Deploy to EC2 with Terraform') {
             steps {
                 script {
 
-                    // Install Terraform if not exists
+                    // Install Terraform if missing
                     bat '''
                     if not exist terraform.exe (
                         echo Downloading Terraform...
@@ -73,32 +81,48 @@ pipeline {
                     )
                     '''
 
-                    // Run Terraform
-                    withCredentials([$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']) {
+                    // AWS Credentials
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'aws-credentials',
+                            usernameVariable: 'AWS_ACCESS_KEY_ID',
+                            passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                        )
+                    ]) {
+
                         bat """
                         set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
                         set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
                         set AWS_DEFAULT_REGION=${AWS_REGION}
 
                         cd terraform
+
                         ..\\terraform.exe init -upgrade
                         ..\\terraform.exe validate
-                        ..\\terraform.exe plan -var="aws_region=${AWS_REGION}" -var="instance_type=${EC2_INSTANCE_TYPE}" -var="docker_image=${DOCKER_IMAGE}:${BUILD_NUMBER}" -var="tag=${BUILD_NUMBER}" -out=tfplan
+
+                        ..\\terraform.exe plan ^
+                        -var="aws_region=${AWS_REGION}" ^
+                        -var="instance_type=${EC2_INSTANCE_TYPE}" ^
+                        -var="docker_image=${DOCKER_IMAGE}:${BUILD_NUMBER}" ^
+                        -var="tag=${BUILD_NUMBER}" ^
+                        -out=tfplan
+
                         ..\\terraform.exe apply -auto-approve tfplan
                         """
                     }
 
                     // Get EC2 IP
-                    def ec2_ip_cmd = bat(script: 'cd terraform && ..\\terraform.exe output -raw ec2_public_ip', returnStdout: true).trim()
-                    def ec2_ip = ec2_ip_cmd.split('\\n')[0].trim()
+                    def ec2_ip = bat(
+                        script: 'cd terraform && ..\\terraform.exe output -raw ec2_public_ip',
+                        returnStdout: true
+                    ).trim()
 
                     env.EC2_IP = ec2_ip
 
                     echo "✅ EC2 deployed!"
                     echo "🌐 App URL: http://${env.EC2_IP}:3000"
 
-                    // Wait for app
-                    echo "⏳ Waiting for app to start..."
+                    // ✅ FIXED WAIT (NO ERROR NOW)
                     bat "ping -n 60 127.0.0.1 >nul"
 
                     // Health check
@@ -110,7 +134,7 @@ pipeline {
                         if (\$res.StatusCode -eq 200) {
                             Write-Host '✅ App is running!'
                         } else {
-                            Write-Host '⚠️ Status: ' \$res.StatusCode
+                            Write-Host '⚠️ Status:' \$res.StatusCode
                         }
                     } catch {
                         Write-Host '⚠️ App still starting... Check manually.'
@@ -121,27 +145,26 @@ pipeline {
             }
         }
     }
-    
+
     post {
         always {
             bat 'docker logout'
             bat 'docker system prune -f'
             echo "📋 Cleanup done"
         }
-        
+
         success {
-            echo "🎉 Pipeline SUCCESS!"
+            echo "🎉 PIPELINE SUCCESS!"
             echo "🐳 Image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
             echo "🌐 URL: http://${env.EC2_IP}:3000"
         }
-        
+
         failure {
-            echo "❌ Pipeline FAILED!"
-            echo "Check logs for errors:"
-            echo "- Docker issues"
-            echo "- Git checkout failure"
-            echo "- Terraform errors"
-            echo "- AWS credentials issues"
+            echo "❌ PIPELINE FAILED!"
+            echo "Check:"
+            echo "- AWS credentials"
+            echo "- Terraform config"
+            echo "- Docker image"
         }
     }
 }

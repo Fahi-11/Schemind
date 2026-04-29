@@ -179,19 +179,20 @@ pipeline {
                     
                     // Get EC2 public IP with error handling
                     try {
-                        def ec2_ip = bat(script: 'cd terraform && ..\\terraform.exe output -raw ec2_public_ip', returnStdout: true).trim()
-                        echo "✅ EC2 Instance deployed successfully!"
-                        echo "🌐 Application will be available at: http://${ec2_ip}:3000"
-                        echo "🐳 Docker image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
-                        echo "💻 Instance type: ${EC2_INSTANCE_TYPE}"
-                        
-                        // Wait for application to be ready
-                        echo "⏳ Waiting for application to start (60 seconds)..."
-                        bat "ping -n 60 127.0.0.1 >nul"
-                        
-                        // Health check
-                        try {
-                            script {
+                        script {
+                            def ec2_ip_cmd = bat(script: 'cd terraform && ..\\terraform.exe output -raw ec2_public_ip', returnStdout: true).trim()
+                            def ec2_ip = ec2_ip_cmd.split('\\n')[0].trim()
+                            echo "✅ EC2 Instance deployed successfully!"
+                            echo "🌐 Application will be available at: http://${ec2_ip}:3000"
+                            echo "🐳 Docker image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                            echo "💻 Instance type: ${EC2_INSTANCE_TYPE}"
+                            
+                            // Wait for application to be ready
+                            echo "⏳ Waiting for application to start (60 seconds)..."
+                            bat "ping -n 60 127.0.0.1 >nul"
+                            
+                            // Health check
+                            try {
                                 def url = "http://${ec2_ip}:3000"
                                 powershell """
                                 \$url = \"${url}\"
@@ -206,9 +207,9 @@ pipeline {
                                     Write-Host \"⚠️ Application may still be starting. Please check: \$url\"
                                 }
                                 """
+                            } catch (Exception e) {
+                                echo "⚠️ Health check failed. Please check: http://${ec2_ip}:3000"
                             }
-                        } catch (Exception e) {
-                            echo "⚠️ Health check failed. Please check: http://${ec2_ip}:3000"
                         }
                         
                     } catch (Exception e) {

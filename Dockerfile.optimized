@@ -17,14 +17,14 @@ COPY postcss.config.js ./
 # Install frontend dependencies with npm ci for faster, reliable builds
 RUN npm ci --only=production --cache /tmp/npm-cache
 
-# Copy frontend source code
+# Create public directory and copy frontend build output
+RUN mkdir -p ./public/
 COPY src/ ./src/
 COPY index.html ./
-COPY public/ ./public/
+RUN npm run build && npm cache clean --force
 
-# Create public directory if it doesn't exist
-RUN mkdir -p ./public/
-COPY public/ ./public/
+# Copy built frontend to production stage
+COPY --from=frontend-builder /app/public ./public/
 
 # Build frontend with optimization
 RUN npm run build && npm cache clean --force

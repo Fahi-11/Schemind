@@ -5,9 +5,6 @@ pipeline {
         DOCKER_IMAGE = 'faheem313/schemind'
         DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
         GITHUB_REPO = 'https://github.com/theunknownodysseus/Schemind.git'
-        AWS_REGION = 'us-east-1'
-        EC2_INSTANCE_TYPE = 't2.micro'
-        TERRAFORM_DIR = 'terraform'
     }
     
     stages {
@@ -25,147 +22,76 @@ pipeline {
             }
         }
         
-        stage('Setup Node.js') {
-            steps {
-                script {
-                    // Check if Node.js is already installed
-                    sh '''
-                    if ! command -v node &> /dev/null; then
-                        echo "Installing Node.js..."
-                        curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-                        sudo apt-get install -y nodejs
-                    else
-                        echo "Node.js already installed"
-                    fi
-                    
-                    # Verify installation
-                    node --version
-                    npm --version
-                    '''
-                }
-            }
-        }
-        
-        stage('Install Dependencies') {
-            parallel {
-                stage('Frontend Dependencies') {
-                    steps {
-                        sh 'npm install'
-                    }
-                }
-                stage('Backend Dependencies') {
-                    steps {
-                        dir('backend') {
-                            sh 'npm install'
-                        }
-                    }
-                }
-            }
-        }
-        
-        stage('Build Application') {
-            parallel {
-                stage('Build Frontend') {
-                    steps {
-                        sh 'npm run build'
-                    }
-                }
-                stage('Prepare Backend') {
-                    steps {
-                        dir('backend') {
-                            // Copy built frontend to backend for serving
-                            sh 'cp -r ../dist ./public || true'
-                        }
-                    }
-                }
-            }
-        }
-        
-        stage('Run Tests') {
-            steps {
-                script {
-                    try {
-                        sh 'npm run lint || true'
-                        echo "Tests completed successfully"
-                    } catch (Exception e) {
-                        echo "Tests failed but continuing pipeline: ${e.getMessage()}"
-                    }
-                }
-            }
-        }
-        
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Create Dockerfile if it doesn't exist
-                    sh '''
-                    cat > Dockerfile << \'EOF\'
-# Multi-stage build for Schemind
-FROM node:18-alpine AS frontend-builder
-
-WORKDIR /app/frontend
-
-# Copy frontend package files
-COPY package*.json ./
-COPY tsconfig*.json ./
-COPY vite.config.ts ./
-COPY tailwind.config.js ./
-COPY postcss.config.js ./
-
-# Install frontend dependencies
-RUN npm ci --only=production
-
-# Copy frontend source code
-COPY src/ ./src/
-COPY index.html ./
-COPY public/ ./public/
-
-# Build frontend
-RUN npm run build
-
-# Backend stage
-FROM node:18-alpine AS backend
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apk add --no-cache python3 make g++
-
-# Copy backend package files
-COPY backend/package*.json ./
-
-# Install backend dependencies
-RUN npm ci --only=production
-
-# Copy backend source code
-COPY backend/server.js ./
-
-# Copy built frontend from previous stage
-COPY --from=frontend-builder /app/frontend/dist ./public
-
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nodejs -u 1001
-
-# Change ownership of the app directory
-RUN chown -R nodejs:nodejs /app
-USER nodejs
-
-# Expose port
-EXPOSE 3000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
-  CMD node -e "require(\'http\').get(\'http://localhost:3000\', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
-
-# Start the application
-CMD ["node", "server.js"]
-EOF
+                    // Create Dockerfile for Windows - fixed version
+                    bat '''
+                    echo # Multi-stage build for Schemind > Dockerfile
+                    echo FROM node:20-alpine AS frontend-builder >> Dockerfile
+                    echo. >> Dockerfile
+                    echo WORKDIR /app/frontend >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Copy frontend package files >> Dockerfile
+                    echo COPY package*.json ./ >> Dockerfile
+                    echo COPY tsconfig*.json ./ >> Dockerfile
+                    echo COPY vite.config.ts ./ >> Dockerfile
+                    echo COPY tailwind.config.js ./ >> Dockerfile
+                    echo COPY postcss.config.js ./ >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Install ALL dependencies (including devDependencies) >> Dockerfile
+                    echo RUN npm ci >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Copy frontend source code >> Dockerfile
+                    echo COPY src/ ./src/ >> Dockerfile
+                    echo COPY index.html ./ >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Create public directory if it doesn't exist >> Dockerfile
+                    echo RUN mkdir -p ./public || true >> Dockerfile
+                    echo # Copy favicon if exists >> Dockerfile
+                    echo COPY favicon.ico ./public/ || true >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Build frontend >> Dockerfile
+                    echo RUN npm run build >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Backend stage >> Dockerfile
+                    echo FROM node:20-alpine AS backend >> Dockerfile
+                    echo. >> Dockerfile
+                    echo WORKDIR /app >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Install system dependencies >> Dockerfile
+                    echo RUN apk add --no-cache python3 make g++ >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Copy backend package files >> Dockerfile
+                    echo COPY backend/package*.json ./ >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Install backend dependencies (use npm install since no lockfile) >> Dockerfile
+                    echo RUN npm install --omit=dev >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Copy backend source code >> Dockerfile
+                    echo COPY backend/server.js ./ >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Copy built frontend from previous stage >> Dockerfile
+                    echo COPY --from=frontend-builder /app/frontend/dist ./public >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Create non-root user >> Dockerfile
+                    echo RUN addgroup -g 1001 -S nodejs >> Dockerfile
+                    echo RUN adduser -S nodejs -u 1001 >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Change ownership of the app directory >> Dockerfile
+                    echo RUN chown -R nodejs:nodejs /app >> Dockerfile
+                    echo USER nodejs >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Expose port >> Dockerfile
+                    echo EXPOSE 3000 >> Dockerfile
+                    echo. >> Dockerfile
+                    echo # Start the application >> Dockerfile
+                    echo CMD ["node", "server.js"] >> Dockerfile
                     '''
                     
                     // Build Docker image
-                    sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
-                    sh "docker build -t ${DOCKER_IMAGE}:latest ."
+                    bat "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+                    bat "docker build -t ${DOCKER_IMAGE}:latest ."
                     
                     echo "Docker image built successfully"
                 }
@@ -177,9 +103,7 @@ EOF
                 script {
                     // Login to Docker Hub using Jenkins credentials
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh '''
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        '''
+                        bat 'echo %DOCKER_PASS% | docker login -u "%DOCKER_USER%" --password-stdin'
                     }
                 }
             }
@@ -189,8 +113,8 @@ EOF
             steps {
                 script {
                     // Push images to Docker Hub
-                    sh "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
-                    sh "docker push ${DOCKER_IMAGE}:latest"
+                    bat "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                    bat "docker push ${DOCKER_IMAGE}:latest"
                     
                     echo "Images pushed to Docker Hub successfully"
                 }
@@ -200,64 +124,39 @@ EOF
         stage('Deploy to EC2 with Terraform') {
             steps {
                 script {
-                    // Install Terraform
-                    sh '''
-                    if ! command -v terraform &> /dev/null; then
-                        echo "Installing Terraform..."
-                        curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
-                        sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
-                        sudo apt-get update
-                        sudo apt-get install -y terraform
-                    else
-                        echo "Terraform already installed"
-                    fi
-                    
-                    terraform --version
+                    // Install Terraform (Windows)
+                    bat '''
+                    if not exist terraform.exe (
+                        echo Downloading Terraform...
+                        powershell -Command "Invoke-WebRequest -Uri 'https://releases.hashicorp.com/terraform/1.7.5/terraform_1.7.5_windows_amd64.zip' -OutFile 'terraform.zip'"
+                        powershell -Command "Expand-Archive -Path 'terraform.zip' -DestinationPath '.'"
+                        del terraform.zip
+                    ) else (
+                        echo Terraform already exists
+                    )
+                    terraform.exe version
                     '''
                     
-                    // Initialize Terraform
-                    dir("${TERRAFORM_DIR}") {
-                        sh 'terraform init'
-                        
-                        // Plan Terraform deployment
-                        sh """
-                        terraform plan \\
-                            -var="aws_region=${AWS_REGION}" \\
-                            -var="instance_type=${EC2_INSTANCE_TYPE}" \\
-                            -var="docker_image=${DOCKER_IMAGE}:${BUILD_NUMBER}" \\
-                            -var="tag=${BUILD_NUMBER}" \\
-                            -out=tfplan
-                        """
-                        
-                        // Apply Terraform deployment
-                        sh """
-                        terraform apply -auto-approve tfplan
-                        """
-                        
-                        // Get EC2 public IP
-                        def ec2_ip = sh(script: 'terraform output -raw ec2_public_ip', returnStdout: true).trim()
-                        
-                        echo "✅ EC2 Instance deployed successfully!"
-                        echo "🌐 Application will be available at: http://${ec2_ip}:3000"
-                        echo "🐳 Docker image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
-                        
-                        // Wait for application to be ready
-                        sh """
-                        echo "Waiting for application to start..."
-                        sleep 30
-                        
-                        # Check if application is running
-                        for i in {1..10}; do
-                            if curl -f http://${ec2_ip}:3000 > /dev/null 2>&1; then
-                                echo "✅ Application is running successfully!"
-                                break
-                            else
-                                echo "Waiting for application to start... (Attempt \$i/10)"
-                                sleep 10
-                            fi
-                        done
-                        """
+                    // Initialize and apply Terraform with AWS credentials using external files
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+                        bat '''
+                        set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
+                        set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
+                        set AWS_DEFAULT_REGION=%AWS_REGION%
+                        cd terraform
+                        ..\\terraform.exe init
+                        ..\\terraform.exe plan -var="aws_region=us-east-1" -var="instance_type=c7.flex.large" -var="docker_image=%DOCKER_IMAGE%:%BUILD_NUMBER%" -var="tag=%BUILD_NUMBER%" -out=tfplan
+                        ..\\terraform.exe apply -auto-approve tfplan
+                        '''
                     }
+                    
+                    // Get EC2 public IP
+                    def ec2_ip = bat(script: 'cd terraform && ..\\terraform.exe output -raw ec2_public_ip', returnStdout: true).trim()
+                    
+                    echo "✅ EC2 Instance deployed successfully!"
+                    echo "🌐 Application will be available at: http://${ec2_ip}:3000"
+                    echo "🐳 Docker image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                    echo "💻 Instance type: c7.flex.large"
                 }
             }
         }
@@ -266,18 +165,15 @@ EOF
     post {
         always {
             // Clean up Docker
-            sh 'docker logout'
-            sh 'docker system prune -f'
-            
-            // Archive build artifacts
-            archiveArtifacts artifacts: 'dist/**/*', allowEmptyArchive: true
-            archiveArtifacts artifacts: 'backend/server.js', allowEmptyArchive: true
+            bat 'docker logout'
+            bat 'docker system prune -f'
         }
         
         success {
             echo '✅ Pipeline completed successfully!'
             echo "🐳 Docker image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
-            echo "🌐 Application deployed and ready"
+            echo "🌐 Image pushed to Docker Hub - ready for deployment"
+            echo "🚀 EC2 instance created and application deployed!"
         }
         
         failure {

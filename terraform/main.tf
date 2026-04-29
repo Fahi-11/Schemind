@@ -90,7 +90,7 @@ resource "aws_security_group" "schemind_sg" {
 
 # EC2 Instance
 resource "aws_instance" "schemind_app" {
-  ami           = "ami-0c02fb55956c7d316" # Amazon Linux 2
+  ami           = "ami-0c7217cdde317cfec" # Amazon Linux 2
   instance_type = var.instance_type
   security_groups = [aws_security_group.schemind_sg.name]
 

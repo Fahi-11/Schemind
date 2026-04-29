@@ -74,21 +74,10 @@ pipeline {
                     bat '''
                     if not exist terraform\\main.tf (
                         echo ERROR: Terraform files not found in workspace!
-                        echo Checking current directory contents:
-                        dir /b
-                        echo.
-                        echo Checking terraform directory:
-                        if exist terraform (
-                            dir terraform
-                        ) else (
-                            echo terraform directory does not exist
-                        )
-                        echo.
-                        echo Checking if terraform files exist in repository:
-                        dir /b terraform\\*.tf 2>nul || echo No .tf files found in terraform directory
+                        dir terraform\\*.tf
                         exit /b 1
                     ) else (
-                        echo Terraform files found successfully:
+                        echo Terraform files found successfully!
                         dir terraform\\*.tf
                     )
                     '''

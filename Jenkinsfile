@@ -191,7 +191,10 @@ pipeline {
                         
                         // Health check
                         try {
-                            bat "curl -f http://${ec2_ip}:3000 --max-time 10"
+                            script {
+                                def url = "http://${ec2_ip}:3000"
+                                bat "curl -f \"${url}\" --max-time 10"
+                            }
                             echo "✅ Application is responding successfully!"
                         } catch (Exception e) {
                             echo "⚠️ Application may still be starting. Please check: http://${ec2_ip}:3000"

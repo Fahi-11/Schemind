@@ -5,6 +5,9 @@ pipeline {
         DOCKER_IMAGE = 'faheem313/schemind'
         DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
         GITHUB_REPO = 'https://github.com/theunknownodysseus/Schemind.git'
+        AWS_REGION = 'us-east-1'
+        EC2_INSTANCE_TYPE = 'c7.flex.large'
+        TERRAFORM_DIR = 'terraform'
     }
     
     stages {
@@ -137,26 +140,67 @@ pipeline {
                     terraform.exe version
                     '''
                     
-                    // Initialize and apply Terraform with AWS credentials using external files
+                    // Verify Terraform directory exists and has files from Git checkout
+                    bat '''
+                    if not exist terraform\\main.tf (
+                        echo ERROR: Terraform files not found in workspace!
+                        echo Checking current directory contents:
+                        dir /b
+                        echo.
+                        echo Checking terraform directory:
+                        if exist terraform (
+                            dir terraform
+                        ) else (
+                            echo terraform directory does not exist
+                        )
+                        echo.
+                        echo Checking if terraform files exist in repository:
+                        dir /b terraform\\*.tf 2>nul || echo No .tf files found in terraform directory
+                        exit /b 1
+                    ) else (
+                        echo Terraform files found successfully:
+                        dir terraform\\*.tf
+                    )
+                    '''
+                    
+                    // Initialize and apply Terraform with AWS credentials
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
                         bat '''
                         set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
                         set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
                         set AWS_DEFAULT_REGION=%AWS_REGION%
                         cd terraform
-                        ..\\terraform.exe init
-                        ..\\terraform.exe plan -var="aws_region=us-east-1" -var="instance_type=c7.flex.large" -var="docker_image=%DOCKER_IMAGE%:%BUILD_NUMBER%" -var="tag=%BUILD_NUMBER%" -out=tfplan
+                        ..\\terraform.exe init -upgrade
+                        ..\\terraform.exe validate
+                        ..\\terraform.exe plan -var="aws_region=%AWS_REGION%" -var="instance_type=%EC2_INSTANCE_TYPE%" -var="docker_image=%DOCKER_IMAGE%:%BUILD_NUMBER%" -var="tag=%BUILD_NUMBER%" -out=tfplan
                         ..\\terraform.exe apply -auto-approve tfplan
                         '''
                     }
                     
-                    // Get EC2 public IP
-                    def ec2_ip = bat(script: 'cd terraform && ..\\terraform.exe output -raw ec2_public_ip', returnStdout: true).trim()
-                    
-                    echo "✅ EC2 Instance deployed successfully!"
-                    echo "🌐 Application will be available at: http://${ec2_ip}:3000"
-                    echo "🐳 Docker image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
-                    echo "💻 Instance type: c7.flex.large"
+                    // Get EC2 public IP with error handling
+                    try {
+                        def ec2_ip = bat(script: 'cd terraform && ..\\terraform.exe output -raw ec2_public_ip', returnStdout: true).trim()
+                        echo "✅ EC2 Instance deployed successfully!"
+                        echo "🌐 Application will be available at: http://${ec2_ip}:3000"
+                        echo "🐳 Docker image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                        echo "💻 Instance type: ${EC2_INSTANCE_TYPE}"
+                        
+                        // Wait for application to be ready
+                        echo "⏳ Waiting for application to start (60 seconds)..."
+                        bat "timeout /t 60 /nobreak >nul"
+                        
+                        // Health check
+                        try {
+                            bat "curl -f http://${ec2_ip}:3000 --max-time 10"
+                            echo "✅ Application is responding successfully!"
+                        } catch (Exception e) {
+                            echo "⚠️ Application may still be starting. Please check: http://${ec2_ip}:3000"
+                        }
+                        
+                    } catch (Exception e) {
+                        echo "❌ Failed to get EC2 public IP. Check Terraform output."
+                        currentBuild.result = 'UNSTABLE'
+                    }
                 }
             }
         }
@@ -167,6 +211,9 @@ pipeline {
             // Clean up Docker
             bat 'docker logout'
             bat 'docker system prune -f'
+            
+            // Terraform cleanup (optional - keep state files)
+            echo "📋 Terraform state files preserved in terraform directory"
         }
         
         success {
@@ -174,10 +221,20 @@ pipeline {
             echo "🐳 Docker image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
             echo "🌐 Image pushed to Docker Hub - ready for deployment"
             echo "🚀 EC2 instance created and application deployed!"
+            echo "💻 Instance type: ${EC2_INSTANCE_TYPE}"
+            echo "🔗 Check your application at the provided URL"
         }
         
         failure {
             echo '❌ Pipeline failed!'
+            echo '🔍 Check the console output for detailed error information'
+            echo '📋 Common issues to check:'
+            echo '   - Docker Hub credentials'
+            echo '   - AWS credentials and permissions'
+            echo '   - Terraform configuration files'
+            echo '   - Network connectivity'
+            
+            // Optional: Send email notification
             mail to: 'admin@example.com',
                 subject: "Jenkins Pipeline Failed: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
                 body: "The Jenkins pipeline for ${env.JOB_NAME} failed. Check the console output for details."
@@ -185,6 +242,7 @@ pipeline {
         
         unstable {
             echo '⚠️ Pipeline completed with warnings!'
+            echo '🔍 Some stages may have issues. Review the logs above.'
         }
     }
 }

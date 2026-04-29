@@ -91,7 +91,7 @@ resource "aws_instance" "schemind_app" {
 # Elastic IP (optional - for static IP)
 resource "aws_eip" "schemind_eip" {
   instance = aws_instance.schemind_app.id
-  vpc      = true
+  domain   = "vpc"
 
   tags = {
     Name = "schemind-eip-${var.tag}"

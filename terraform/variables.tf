@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
-  default     = "c7.flex.large"
+  default     = "t3.large"
 }
 
 variable "docker_image" {

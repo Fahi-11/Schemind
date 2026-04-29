@@ -1,73 +1,68 @@
-# Optimized multi-stage build for Schemind
+# -------- Base --------
 FROM node:18-alpine AS base
-# Install dependencies only once
-RUN apk add --no-cache python3 make g++ && rm -rf /var/cache/apk/*
+RUN apk add --no-cache python3 make g++
 
-# Frontend build stage
+# -------- Frontend Build --------
 FROM base AS frontend-builder
-WORKDIR /app/frontend
 
-# Copy frontend package files
+WORKDIR /app
+
+# Install frontend dependencies
 COPY package*.json ./
-COPY tsconfig*.json ./
+RUN npm install
+
+# Copy frontend source files
+COPY src ./src
+COPY index.html ./
 COPY vite.config.ts ./
+COPY tsconfig*.json ./
 COPY tailwind.config.js ./
 COPY postcss.config.js ./
 
-# Install frontend dependencies with npm ci for faster, reliable builds
-RUN npm ci --only=production --cache /tmp/npm-cache
+# Build frontend (Vite -> dist/)
+RUN npm run build
 
-# Create public directory and copy frontend build output
-RUN mkdir -p ./public/
-COPY src/ ./src/
-COPY index.html ./
-RUN npm run build && npm cache clean --force
 
-# Production stage
-FROM node:18-alpine AS production
+# -------- Backend Build --------
+FROM base AS backend
+
 WORKDIR /app
 
-# Copy built frontend from frontend-builder stage
-COPY --from=frontend-builder /app/public ./public/
-
-# Copy backend files
-WORKDIR /app
-
-# Copy backend package files
-COPY backend/package*.json ./
-
-# Install backend dependencies with npm ci
-RUN npm ci --only=production --cache /tmp/npm-cache
+# Install backend dependencies
+COPY backend/package*.json ./backend/
+RUN cd backend && npm install
 
 # Copy backend source code
-COPY backend/server.js ./
+COPY backend ./backend
 
-# Production stage - minimal final image
-FROM node:18-alpine AS production
+
+# -------- Final Production Image --------
+FROM node:18-alpine
+
 WORKDIR /app
 
-# Install only runtime dependencies
-RUN apk add --no-cache nodejs && rm -rf /var/cache/apk/*
+# Create non-root user (security best practice)
+RUN addgroup -S nodejs && adduser -S nodejs -G nodejs
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001 && \
-    mkdir -p /app/public && \
-    chown -R nodejs:nodejs /app
+# Copy backend
+COPY --from=backend /app/backend ./backend
 
-# Copy built artifacts from previous stages
-COPY --from=frontend-builder /app/frontend/dist ./public/
-COPY --from=backend /app/server.js ./
+# Copy built frontend into backend/public
+COPY --from=frontend-builder /app/dist ./backend/public
 
-# Switch to non-root user
+# Set working directory to backend
+WORKDIR /app/backend
+
+# Fix permissions
+RUN chown -R nodejs:nodejs /app
 USER nodejs
 
-# Expose port
+# Expose app port
 EXPOSE 3000
 
-# Optimized health check
+# Healthcheck
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+  CMD node -e "require('http').get('http://localhost:3000', (res) => process.exit(res.statusCode===200?0:1))"
 
-# Start application with optimized Node.js flags
-CMD ["node", "--max-old-space-size=4096", "server.js"]
+# Start backend server
+CMD ["node", "server.js"]

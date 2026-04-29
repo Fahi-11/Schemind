@@ -1,60 +1,56 @@
-# Multi-stage build for Schemind
+# -------- FRONTEND BUILD --------
 FROM node:18-alpine AS frontend-builder
 
-WORKDIR /app/frontend
+WORKDIR /app
 
-# Copy frontend package files
+# Install dependencies
 COPY package*.json ./
-COPY tsconfig*.json ./
+RUN npm install
+
+# Copy frontend source
+COPY src ./src
+COPY index.html ./
 COPY vite.config.ts ./
+COPY tsconfig*.json ./
 COPY tailwind.config.js ./
 COPY postcss.config.js ./
-
-# Install frontend dependencies
-RUN npm ci --only=production
-
-# Copy frontend source code
-COPY src/ ./src/
-COPY index.html ./
-COPY public/ ./public/
 
 # Build frontend
 RUN npm run build
 
-# Backend stage
+
+# -------- BACKEND BUILD --------
 FROM node:18-alpine AS backend
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apk add --no-cache python3 make g++
+# Install backend deps
+COPY backend/package*.json ./backend/
+RUN cd backend && npm install
 
-# Copy backend package files
-COPY backend/package*.json ./
+# Copy backend code
+COPY backend ./backend
 
-# Install backend dependencies
-RUN npm ci --only=production
 
-# Copy backend source code
-COPY backend/server.js ./
+# -------- FINAL IMAGE --------
+FROM node:18-alpine
 
-# Copy built frontend from previous stage
-COPY --from=frontend-builder /app/frontend/dist ./public
+WORKDIR /app
 
 # Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nodejs -u 1001
+RUN addgroup -S nodejs && adduser -S nodejs -G nodejs
 
-# Change ownership of the app directory
+# Copy backend
+COPY --from=backend /app/backend ./backend
+
+# Copy built frontend into backend/public
+COPY --from=frontend-builder /app/dist ./backend/public
+
+WORKDIR /app/backend
+
 RUN chown -R nodejs:nodejs /app
 USER nodejs
 
-# Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
-
-# Start the application
 CMD ["node", "server.js"]

@@ -89,14 +89,15 @@ resource "aws_instance" "schemind_app" {
 }
 
 # Elastic IP (optional - for static IP)
-resource "aws_eip" "schemind_eip" {
-  instance = aws_instance.schemind_app.id
-  domain   = "vpc"
-
-  tags = {
-    Name = "schemind-eip-${var.tag}"
-    Project = "Schemind"
-    BuildTag = var.tag
-  }
-}
+# Commented out due to AWS EIP limit
+# resource "aws_eip" "schemind_eip" {
+#   instance = aws_instance.schemind_app.id
+#   domain   = "vpc"
+# 
+#   tags = {
+#     Name = "schemind-eip-${var.tag}"
+#     Project = "Schemind"
+#     BuildTag = var.tag
+#   }
+# }
 

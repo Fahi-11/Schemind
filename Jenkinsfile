@@ -193,11 +193,22 @@ pipeline {
                         try {
                             script {
                                 def url = "http://${ec2_ip}:3000"
-                                bat "curl -f \"${url}\" --max-time 10"
+                                powershell """
+                                \$url = \"${url}\"
+                                try {
+                                    \$response = Invoke-WebRequest -Uri \$url -TimeoutSec 10 -UseBasicParsing
+                                    if (\$response.StatusCode -eq 200) {
+                                        Write-Host \"✅ Application is responding successfully!\"
+                                    } else {
+                                        Write-Host \"⚠️ Application returned status code: \$($response.StatusCode)\"
+                                    }
+                                } catch {
+                                    Write-Host \"⚠️ Application may still be starting. Please check: \$url\"
+                                }
+                                """
                             }
-                            echo "✅ Application is responding successfully!"
                         } catch (Exception e) {
-                            echo "⚠️ Application may still be starting. Please check: http://${ec2_ip}:3000"
+                            echo "⚠️ Health check failed. Please check: http://${ec2_ip}:3000"
                         }
                         
                     } catch (Exception e) {

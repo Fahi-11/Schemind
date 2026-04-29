@@ -6,7 +6,7 @@ pipeline {
         DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
         GITHUB_REPO = 'https://github.com/Fahi-11/Schemind.git'
         AWS_REGION = 'us-east-1'
-        EC2_INSTANCE_TYPE = 't3.large'
+        EC2_INSTANCE_TYPE = 't3.small'
         TERRAFORM_DIR = 'terraform'
     }
     

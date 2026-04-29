@@ -13,29 +13,6 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Variables
-variable "aws_region" {
-  description = "AWS region"
-  type        = string
-  default     = "us-east-1"
-}
-
-variable "instance_type" {
-  description = "EC2 instance type"
-  type        = string
-  default     = "t2.micro"
-}
-
-variable "docker_image" {
-  description = "Docker image to deploy"
-  type        = string
-}
-
-variable "tag" {
-  description = "Build tag for deployment"
-  type        = string
-  default     = "latest"
-}
 
 # Security Group
 resource "aws_security_group" "schemind_sg" {
@@ -123,18 +100,3 @@ resource "aws_eip" "schemind_eip" {
   }
 }
 
-# Outputs
-output "ec2_public_ip" {
-  description = "Public IP of the EC2 instance"
-  value       = aws_eip.schemind_eip.public_ip
-}
-
-output "ec2_instance_id" {
-  description = "ID of the EC2 instance"
-  value       = aws_instance.schemind_app.id
-}
-
-output "application_url" {
-  description = "URL of the deployed application"
-  value       = "http://${aws_eip.schemind_eip.public_ip}:3000"
-}

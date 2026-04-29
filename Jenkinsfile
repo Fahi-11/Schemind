@@ -25,14 +25,9 @@ pipeline {
             }
         }
         
-        stage('Build Docker Image') {
+        stage('Build and Push Docker Image') {
             steps {
                 script {
-                    // Create Dockerfile for Windows - fixed version
-                    bat '''
-                    echo # Multi-stage build for Schemind > Dockerfile
-                    echo FROM node:20-alpine AS frontend-builder >> Dockerfile
-                    echo. >> Dockerfile
                     // Use optimized multi-stage Dockerfile
                     echo "🐳 Building optimized Docker image..."
                     
@@ -58,25 +53,11 @@ pipeline {
                     bat "docker image prune -f --filter label=stage=builder"
                 }
             }
+    }
         }
-        
-        stage('Login to Docker Hub') {
-            steps {
-                script {
-                    // Login to Docker Hub using Jenkins credentials
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        bat 'echo %DOCKER_PASS% | docker login -u "%DOCKER_USER%" --password-stdin'
-                    }
-                }
-            }
-        }
-        
-                    echo "Images pushed to Docker Hub successfully"
-                }
-            }
-        }
-        
-        stage('Deploy to EC2 with Terraform') {
+    }
+    
+    post {
             steps {
                 script {
                     // Install Terraform (Windows)
@@ -90,7 +71,6 @@ pipeline {
                         echo Terraform already exists
                     )
                     terraform.exe version
-                    '''
                     
                     // Verify Terraform directory exists and has files from Git checkout
                     bat '''
@@ -184,32 +164,53 @@ pipeline {
         }
         
         success {
-            echo '✅ Pipeline completed successfully!'
+            echo "🎉 Pipeline completed successfully!"
             echo "🐳 Docker image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
             echo "🌐 Image pushed to Docker Hub - ready for deployment"
             echo "🚀 EC2 instance created and application deployed!"
             echo "💻 Instance type: ${EC2_INSTANCE_TYPE}"
-            echo "🔗 Check your application at the provided URL"
+            echo "🔗 Check your application at: http://${ec2_ip}:3000"
         }
         
         failure {
-            echo '❌ Pipeline failed!'
-            echo '🔍 Check the console output for detailed error information'
-            echo '📋 Common issues to check:'
-            echo '   - Docker Hub credentials'
-            echo '   - AWS credentials and permissions'
-            echo '   - Terraform configuration files'
-            echo '   - Network connectivity'
+            echo "❌ Pipeline failed!"
+            echo "🔍 Check the logs above for error details"
+            echo "📧 Common issues:"
+            echo "  - Docker daemon not running"
+            echo "  - Git checkout failed"
+            echo "  - Terraform execution failed"
+            echo "  - AWS credentials missing"
+            echo "  - Docker Hub login failed"
+        }
+    }
+}
+        always {
+            // Clean up Docker
+            bat 'docker logout'
+            bat 'docker system prune -f'
             
-            // Optional: Send email notification
-            mail to: 'admin@example.com',
-                subject: "Jenkins Pipeline Failed: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
-                body: "The Jenkins pipeline for ${env.JOB_NAME} failed. Check the console output for details."
+            // Terraform cleanup (optional - keep state files)
+            echo "📋 Terraform state files preserved in terraform directory"
         }
         
-        unstable {
-            echo '⚠️ Pipeline completed with warnings!'
-            echo '🔍 Some stages may have issues. Review the logs above.'
+        success {
+            echo "🎉 Pipeline completed successfully!"
+            echo "🐳 Docker image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+            echo "🌐 Image pushed to Docker Hub - ready for deployment"
+            echo "🚀 EC2 instance created and application deployed!"
+            echo "💻 Instance type: ${EC2_INSTANCE_TYPE}"
+            echo "🔗 Check your application at: http://${ec2_ip}:3000"
+        }
+        
+        failure {
+            echo "❌ Pipeline failed!"
+            echo "🔍 Check the logs above for error details"
+            echo "📧 Common issues:"
+            echo "  - Docker daemon not running"
+            echo "  - Git checkout failed"
+            echo "  - Terraform execution failed"
+            echo "  - AWS credentials missing"
+            echo "  - Docker Hub login failed"
         }
     }
 }

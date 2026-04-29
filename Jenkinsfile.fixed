@@ -53,11 +53,9 @@ pipeline {
                     bat "docker image prune -f --filter label=stage=builder"
                 }
             }
-    }
         }
-    }
-    
-    post {
+        
+        stage('Deploy to EC2 with Terraform') {
             steps {
                 script {
                     // Install Terraform (Windows)
@@ -154,36 +152,6 @@ pipeline {
     }
     
     post {
-        always {
-            // Clean up Docker
-            bat 'docker logout'
-            bat 'docker system prune -f'
-            
-            // Terraform cleanup (optional - keep state files)
-            echo "📋 Terraform state files preserved in terraform directory"
-        }
-        
-        success {
-            echo "🎉 Pipeline completed successfully!"
-            echo "🐳 Docker image: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
-            echo "🌐 Image pushed to Docker Hub - ready for deployment"
-            echo "🚀 EC2 instance created and application deployed!"
-            echo "💻 Instance type: ${EC2_INSTANCE_TYPE}"
-            echo "🔗 Check your application at: http://${ec2_ip}:3000"
-        }
-        
-        failure {
-            echo "❌ Pipeline failed!"
-            echo "🔍 Check the logs above for error details"
-            echo "📧 Common issues:"
-            echo "  - Docker daemon not running"
-            echo "  - Git checkout failed"
-            echo "  - Terraform execution failed"
-            echo "  - AWS credentials missing"
-            echo "  - Docker Hub login failed"
-        }
-    }
-}
         always {
             // Clean up Docker
             bat 'docker logout'

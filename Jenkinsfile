@@ -33,70 +33,29 @@ pipeline {
                     echo # Multi-stage build for Schemind > Dockerfile
                     echo FROM node:20-alpine AS frontend-builder >> Dockerfile
                     echo. >> Dockerfile
-                    echo WORKDIR /app/frontend >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Copy frontend package files >> Dockerfile
-                    echo COPY package*.json ./ >> Dockerfile
-                    echo COPY tsconfig*.json ./ >> Dockerfile
-                    echo COPY vite.config.ts ./ >> Dockerfile
-                    echo COPY tailwind.config.js ./ >> Dockerfile
-                    echo COPY postcss.config.js ./ >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Install ALL dependencies (including devDependencies) >> Dockerfile
-                    echo RUN npm ci >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Copy frontend source code >> Dockerfile
-                    echo COPY src/ ./src/ >> Dockerfile
-                    echo COPY index.html ./ >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Create public directory if it doesn't exist >> Dockerfile
-                    echo RUN mkdir -p ./public || true >> Dockerfile
-                    echo # Copy favicon if exists >> Dockerfile
-                    echo COPY favicon.ico ./public/ || true >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Build frontend >> Dockerfile
-                    echo RUN npm run build >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Backend stage >> Dockerfile
-                    echo FROM node:20-alpine AS backend >> Dockerfile
-                    echo. >> Dockerfile
-                    echo WORKDIR /app >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Install system dependencies >> Dockerfile
-                    echo RUN apk add --no-cache python3 make g++ >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Copy backend package files >> Dockerfile
-                    echo COPY backend/package*.json ./ >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Install backend dependencies (use npm install since no lockfile) >> Dockerfile
-                    echo RUN npm install --omit=dev >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Copy backend source code >> Dockerfile
-                    echo COPY backend/server.js ./ >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Copy built frontend from previous stage >> Dockerfile
-                    echo COPY --from=frontend-builder /app/frontend/dist ./public >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Create non-root user >> Dockerfile
-                    echo RUN addgroup -g 1001 -S nodejs >> Dockerfile
-                    echo RUN adduser -S nodejs -u 1001 >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Change ownership of the app directory >> Dockerfile
-                    echo RUN chown -R nodejs:nodejs /app >> Dockerfile
-                    echo USER nodejs >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Expose port >> Dockerfile
-                    echo EXPOSE 3000 >> Dockerfile
-                    echo. >> Dockerfile
-                    echo # Start the application >> Dockerfile
-                    echo CMD ["node", "server.js"] >> Dockerfile
+                    // Use optimized multi-stage Dockerfile
+                    echo "🐳 Building optimized Docker image..."
+                    
+                    // Build with BuildKit for better caching and parallel builds
+                    bat '''
+                    set DOCKER_BUILDKIT=1
+                    docker build --no-cache -t ${DOCKER_IMAGE}:${BUILD_NUMBER} -f Dockerfile.optimized .
                     '''
                     
-                    // Build Docker image
-                    bat "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
-                    bat "docker build -t ${DOCKER_IMAGE}:latest ."
+                    // Optimize image size
+                    echo "📏 Optimizing Docker image size..."
+                    bat "docker images ${DOCKER_IMAGE}:${BUILD_NUMBER}"
                     
-                    echo "Docker image built successfully"
+                    // Push to Docker Hub
+                    echo "📤 Pushing to Docker Hub..."
+                    withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        bat "echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin"
+                        bat "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                    }
+                    
+                    // Clean up intermediate images
+                    echo "🧹 Cleaning up intermediate Docker images..."
+                    bat "docker image prune -f --filter label=stage=builder"
                 }
             }
         }
@@ -112,13 +71,6 @@ pipeline {
             }
         }
         
-        stage('Push to Docker Hub') {
-            steps {
-                script {
-                    // Push images to Docker Hub
-                    bat "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
-                    bat "docker push ${DOCKER_IMAGE}:latest"
-                    
                     echo "Images pushed to Docker Hub successfully"
                 }
             }

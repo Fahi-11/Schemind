@@ -4,7 +4,7 @@ pipeline {
     environment {
         DOCKER_IMAGE = 'faheem313/schemind'
         DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
-        GITHUB_REPO = 'https://github.com/theunknownodysseus/Schemind.git'
+        GITHUB_REPO = 'https://github.com/Fahi-11/Schemind.git'
         AWS_REGION = 'us-east-1'
         EC2_INSTANCE_TYPE = 'c7.flex.large'
         TERRAFORM_DIR = 'terraform'
@@ -18,7 +18,7 @@ pipeline {
                     cleanWs()
                     
                     // Checkout from GitHub
-                    git branch: 'main',
+                    git branch: 'cicd-pipeline',
                         url: "${GITHUB_REPO}",
                         credentialsId: 'github-credentials'
                 }

@@ -5,7 +5,7 @@ terraform {
       version = "~> 5.0"
     }
   }
-  
+
   required_version = ">= 1.0"
 }
 
@@ -13,13 +13,13 @@ provider "aws" {
   region = var.aws_region
 }
 
-
-# Security Group
+# -----------------------------
+# SECURITY GROUP (STATIC NAME)
+# -----------------------------
 resource "aws_security_group" "schemind_sg" {
-  name        = "schemind-sg-${var.tag}"
+  name        = "schemind-sg"   # ❌ removed ${var.tag}
   description = "Security group for Schemind application"
 
-  # HTTP access
   ingress {
     from_port   = 80
     to_port     = 80
@@ -27,7 +27,6 @@ resource "aws_security_group" "schemind_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # HTTPS access
   ingress {
     from_port   = 443
     to_port     = 443
@@ -35,7 +34,6 @@ resource "aws_security_group" "schemind_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Application port
   ingress {
     from_port   = 3000
     to_port     = 3000
@@ -43,7 +41,6 @@ resource "aws_security_group" "schemind_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # SSH access (optional - you may want to restrict this)
   ingress {
     from_port   = 22
     to_port     = 22
@@ -59,45 +56,46 @@ resource "aws_security_group" "schemind_sg" {
   }
 
   tags = {
-    Name = "schemind-sg-${var.tag}"
+    Name    = "schemind-sg"
     Project = "Schemind"
-    BuildTag = var.tag
   }
 }
 
-# EC2 Instance
+# -----------------------------
+# EC2 INSTANCE (REUSED)
+# -----------------------------
 resource "aws_instance" "schemind_app" {
-  ami           = "ami-0c7217cdde317cfec" # Amazon Linux 2
+  ami           = "ami-0c7217cdde317cfec"
   instance_type = var.instance_type
-  security_groups = [aws_security_group.schemind_sg.name]
 
-  user_data = base64encode(templatefile("${path.module}/user-data.sh", {
-    docker_image = var.docker_image
-    tag = var.tag
-  }))
+  vpc_security_group_ids = [aws_security_group.schemind_sg.id]
+
+  # 🚀 Runs only on FIRST creation
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install docker -y
+              service docker start
+              usermod -aG docker ec2-user
+
+              docker pull ${var.docker_image}
+              docker run -d -p 3000:3000 --name schemind ${var.docker_image}
+              EOF
 
   tags = {
-    Name = "schemind-app-${var.tag}"
+    Name    = "schemind-app"
     Project = "Schemind"
-    BuildTag = var.tag
   }
 
-  # Ensure instance gets new AMI if changed
+  # 🧠 CRITICAL FIX
   lifecycle {
-    create_before_destroy = true
+    prevent_destroy = true
   }
 }
 
-# Elastic IP (optional - for static IP)
-# Commented out due to AWS EIP limit
-# resource "aws_eip" "schemind_eip" {
-#   instance = aws_instance.schemind_app.id
-#   domain   = "vpc"
-# 
-#   tags = {
-#     Name = "schemind-eip-${var.tag}"
-#     Project = "Schemind"
-#     BuildTag = var.tag
-#   }
-# }
-
+# -----------------------------
+# OUTPUT
+# -----------------------------
+output "ec2_public_ip" {
+  value = aws_instance.schemind_app.public_ip
+}
